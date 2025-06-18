@@ -1,5 +1,6 @@
 import gc
 import json
+import logging
 import os
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from nunchaku.utils import is_turing
 
 from ...wrappers.flux import ComfyFluxWrapper
 
+logger = logging.getLogger(__name__)
 
 class NunchakuFluxDiTLoader:
     def __init__(self):
@@ -54,12 +56,24 @@ class NunchakuFluxDiTLoader:
         safetensor_files = new_safetensor_files
         model_paths = model_paths + safetensor_files
 
-        ngpus = torch.cuda.device_count()
+        all_turing = False
+        try:
+            if comfy.model_management.cpu_state != comfy.model_management.CPUState.GPU:
+                ngpus = 8
+            else:
+                ngpus = torch.cuda.device_count()
+                if ngpus < 1:
+                    ngpus = 8
+                    logger.debug("0 gpus found, using 8 by default for validation purposes")
+                else:
+                    all_turing = True
+                    for i in range(torch.cuda.device_count()):
+                        if not is_turing(f"cuda:{i}"):
+                            all_turing = False
+        except Exception as exc_info:
+            logger.debug("setting ngpus to 8 because", exc_info=exc_info)
+            ngpus = 8
 
-        all_turing = True
-        for i in range(torch.cuda.device_count()):
-            if not is_turing(f"cuda:{i}"):
-                all_turing = False
 
         if all_turing:
             attention_options = ["nunchaku-fp16"]  # turing GPUs do not support flashattn2
